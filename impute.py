@@ -65,7 +65,7 @@ def step(net, num_steps, i, t_cur, t_next, x_next):
 if __name__ == '__main__':
     dataname = args.dataname
     device = args.device
-    epoch = args.epoch
+    # epoch = args.epoch
     mask_cols = args.cols = [0]
     
     num_trials = 1
@@ -77,6 +77,7 @@ if __name__ == '__main__':
     device =  args.device
     n_head = 1
     factor = 32
+    n_bins = 50
 
     num_layers = 2
 
@@ -124,13 +125,13 @@ if __name__ == '__main__':
             X_test_num[:, mask_idx] = avg
 
 
-        model = Model_VAE(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor, bias = True)
+        model = Model_VAE(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor, bias = True, n_bins=n_bins)
         model = model.to(device)
 
         model.load_state_dict(torch.load(f'{ckpt_dir}/model.pt'))
 
         pre_encoder = Encoder_model(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor).to(device)
-        pre_decoder = Decoder_model(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor)
+        pre_decoder = Decoder_model(num_layers, d_numerical, categories, d_token, n_head = n_head, factor = factor, n_bins=n_bins)
 
         pre_encoder.load_weights(model)
         pre_decoder.load_weights(model)
@@ -143,8 +144,10 @@ if __name__ == '__main__':
 
         x = pre_encoder(X_test_num, X_test_cat).detach().cpu().numpy()
 
-        embedding_save_path = f'tabsyn/vae/ckpt/{dataname}/train_z.npy'
-        train_z = torch.tensor(np.load(embedding_save_path)).float()
+        np_save_path = f'tabsyn/vae/ckpt/{dataname}/'
+        train_z = torch.tensor(np.load(f"{np_save_path}/train_z.npy")).float()
+        X_train_num_max = torch.tensor(np.load(f'{np_save_path}/X_train_num_max.npy')).float()
+        X_train_num_min = torch.tensor(np.load(f'{np_save_path}/X_train_num_min.npy')).float()
         train_z = train_z[:, 1:, :]
 
         B, num_tokens, token_dim = train_z.size()
@@ -222,7 +225,7 @@ if __name__ == '__main__':
 
 
         syn_data = x_t.float().cpu().numpy()
-        syn_num, syn_cat, syn_target = split_num_cat_target(syn_data, info, num_inverse, cat_inverse, args.device) 
+        syn_num, syn_cat, syn_target = split_num_cat_target(syn_data, info, num_inverse, cat_inverse, args.device, X_train_num_max, X_train_num_min) 
 
         syn_df = recover_data(syn_num, syn_cat, syn_target, info)
 
