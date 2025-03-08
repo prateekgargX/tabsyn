@@ -6,6 +6,7 @@ import torch
 from utils_train import preprocess
 from tabsyn.vae.model import Decoder_model 
 
+N_BINS = 50
 def get_input_train(args):
     dataname = args.dataname
 
@@ -45,8 +46,10 @@ def get_input_generate(args):
 
     _, _, categories, d_numerical, num_inverse, cat_inverse = preprocess(dataset_dir, task_type = task_type, inverse = True)
 
-    embedding_save_path = f'{curr_dir}/vae/ckpt/{dataname}/train_z.npy'
-    train_z = torch.tensor(np.load(embedding_save_path)).float()
+    np_save_path = f'{curr_dir}/vae/ckpt/{dataname}/'
+    train_z = torch.tensor(np.load(f"{np_save_path}/train_z.npy")).float()
+    X_train_num_max = torch.tensor(np.load(f'{np_save_path}/X_train_num_max.npy')).float()
+    X_train_num_min = torch.tensor(np.load(f'{np_save_path}/X_train_num_min.npy')).float()
 
     train_z = train_z[:, 1:, :]
 
@@ -54,7 +57,7 @@ def get_input_generate(args):
     in_dim = num_tokens * token_dim
     
     train_z = train_z.view(B, in_dim)
-    pre_decoder = Decoder_model(2, d_numerical, categories, 4, n_head = 1, factor = 32)
+    pre_decoder = Decoder_model(2, d_numerical, categories, 4, n_head = 1, factor = 32, n_bins=N_BINS)
 
     decoder_save_path = f'{curr_dir}/vae/ckpt/{dataname}/decoder.pt'
     pre_decoder.load_state_dict(torch.load(decoder_save_path))
@@ -62,12 +65,12 @@ def get_input_generate(args):
     info['pre_decoder'] = pre_decoder
     info['token_dim'] = token_dim
 
-    return train_z, curr_dir, dataset_dir, ckpt_dir, info, num_inverse, cat_inverse
+    return train_z, curr_dir, dataset_dir, ckpt_dir, info, num_inverse, cat_inverse, X_train_num_max, X_train_num_min
 
 
  
 @torch.no_grad()
-def split_num_cat_target(syn_data, info, num_inverse, cat_inverse, device):
+def split_num_cat_target(syn_data, info, num_inverse, cat_inverse, device, X_train_num_max, X_train_num_min):
     task_type = info['task_type']
 
     num_col_idx = info['num_col_idx']
@@ -91,6 +94,11 @@ def split_num_cat_target(syn_data, info, num_inverse, cat_inverse, device):
     norm_input = pre_decoder(torch.tensor(syn_data))
     x_hat_num, x_hat_cat = norm_input
 
+    bin_means = torch.linspace(0, 1, N_BINS + 1)[1:].to(x_hat_num.device)
+    x_hat_num = bin_means[x_hat_num.argmax(dim = -1)] # Take argmax, ideally should be sampled. Also, ideally sample value after sampling bin
+    
+    x_hat_num = x_hat_num * (X_train_num_max - X_train_num_min) + X_train_num_min
+    # raise    
     syn_cat = []
     for pred in x_hat_cat:
         syn_cat.append(pred.argmax(dim = -1))

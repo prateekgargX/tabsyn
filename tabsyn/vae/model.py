@@ -305,14 +305,15 @@ class VAE(nn.Module):
         return h, mu_z, std_z
 
 class Reconstructor(nn.Module):
-    def __init__(self, d_numerical, categories, d_token):
+    def __init__(self, d_numerical, categories, d_token, n_bins):
         super(Reconstructor, self).__init__()
 
         self.d_numerical = d_numerical
         self.categories = categories
         self.d_token = d_token
+        self.n_bins = n_bins
         
-        self.weight = nn.Parameter(Tensor(d_numerical, d_token))  
+        self.weight = nn.Parameter(Tensor(d_token,n_bins))  
         nn.init.xavier_uniform_(self.weight, gain=1 / math.sqrt(2))
         self.cat_recons = nn.ModuleList()
 
@@ -324,10 +325,9 @@ class Reconstructor(nn.Module):
     def forward(self, h):
         h_num  = h[:, :self.d_numerical]
         h_cat  = h[:, self.d_numerical:]
-
-        recon_x_num = torch.mul(h_num, self.weight.unsqueeze(0)).sum(-1)
+        
+        recon_x_num = (h_num[..., None] * self.weight).sum(-2)
         recon_x_cat = []
-
         for i, recon in enumerate(self.cat_recons):
       
             recon_x_cat.append(recon(h_cat[:, i]))
@@ -336,11 +336,11 @@ class Reconstructor(nn.Module):
 
 
 class Model_VAE(nn.Module):
-    def __init__(self, num_layers, d_numerical, categories, d_token, n_head = 1, factor = 4,  bias = True):
+    def __init__(self, num_layers, d_numerical, categories, d_token, n_bins, n_head = 1, factor = 4,  bias = True):
         super(Model_VAE, self).__init__()
 
         self.VAE = VAE(d_numerical, categories, num_layers, d_token, n_head = n_head, factor = factor, bias = bias)
-        self.Reconstructor = Reconstructor(d_numerical, categories, d_token)
+        self.Reconstructor = Reconstructor(d_numerical, categories, d_token, n_bins)
 
     def get_embedding(self, x_num, x_cat):
         x = self.Tokenizer(x_num, x_cat)
@@ -373,10 +373,10 @@ class Encoder_model(nn.Module):
         return z
 
 class Decoder_model(nn.Module):
-    def __init__(self, num_layers, d_numerical, categories, d_token, n_head, factor, bias = True):
+    def __init__(self, num_layers, d_numerical, categories, d_token, n_head, n_bins, factor, bias = True):
         super(Decoder_model, self).__init__()
         self.VAE_Decoder = Transformer(num_layers, d_token, n_head, d_token, factor)
-        self.Detokenizer = Reconstructor(d_numerical, categories, d_token)
+        self.Detokenizer = Reconstructor(d_numerical, categories, d_token, n_bins)
         
     def load_weights(self, Pretrained_VAE):
         self.VAE_Decoder.load_state_dict(Pretrained_VAE.VAE.decoder.state_dict())

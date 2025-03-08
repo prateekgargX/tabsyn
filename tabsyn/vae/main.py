@@ -26,11 +26,15 @@ TOKEN_BIAS = True
 N_HEAD = 1
 FACTOR = 32
 NUM_LAYERS = 2
-
+N_BINS = 50
 
 def compute_loss(X_num, X_cat, Recon_X_num, Recon_X_cat, mu_z, logvar_z):
+    bin_means = torch.linspace(0, 1, N_BINS + 1)[1:].to(X_num.device)
+    bin_weights = (- N_BINS**2*(X_num[..., None] - bin_means)**2/2).softmax(dim = -1)
+    log_prob = Recon_X_num.log_softmax(dim = -1)
+    mse_loss = ( - log_prob * bin_weights).sum(dim = -1).mean()
+    
     ce_loss_fn = nn.CrossEntropyLoss()
-    mse_loss = (X_num - Recon_X_num).pow(2).mean()
     ce_loss = 0
     acc = 0
     total_num = 0
@@ -88,6 +92,14 @@ def main(args):
     X_train_num, X_test_num = torch.tensor(X_train_num).float(), torch.tensor(X_test_num).float()
     X_train_cat, X_test_cat =  torch.tensor(X_train_cat), torch.tensor(X_test_cat)
 
+    X_train_num_max = X_train_num.max(dim = 0)[0]
+    X_train_num_min = X_train_num.min(dim = 0)[0]
+
+    X_train_num = (X_train_num - X_train_num_min) / (X_train_num_max - X_train_num_min)
+    X_test_num = (X_test_num - X_train_num_min) / (X_train_num_max - X_train_num_min)
+
+    np.save(f'{ckpt_dir}/X_train_num_max.npy', X_train_num_max.cpu().numpy())
+    np.save(f'{ckpt_dir}/X_train_num_min.npy', X_train_num_min.cpu().numpy())
 
     train_data = TabularDataset(X_train_num.float(), X_train_cat)
 
@@ -102,11 +114,11 @@ def main(args):
         num_workers = 4,
     )
 
-    model = Model_VAE(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head = N_HEAD, factor = FACTOR, bias = True)
+    model = Model_VAE(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head = N_HEAD, factor = FACTOR, bias = True, n_bins = N_BINS)
     model = model.to(device)
 
     pre_encoder = Encoder_model(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head = N_HEAD, factor = FACTOR).to(device)
-    pre_decoder = Decoder_model(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head = N_HEAD, factor = FACTOR).to(device)
+    pre_decoder = Decoder_model(NUM_LAYERS, d_numerical, categories, D_TOKEN, n_head = N_HEAD, factor = FACTOR, n_bins = N_BINS).to(device)
 
     pre_encoder.eval()
     pre_decoder.eval()
@@ -140,9 +152,9 @@ def main(args):
             batch_cat = batch_cat.to(device)
 
             Recon_X_num, Recon_X_cat, mu_z, std_z = model(batch_num, batch_cat)
-        
+            
             loss_mse, loss_ce, loss_kld, train_acc = compute_loss(batch_num, batch_cat, Recon_X_num, Recon_X_cat, mu_z, std_z)
-
+            
             loss = loss_mse + loss_ce + beta * loss_kld
             loss.backward()
             optimizer.step()
