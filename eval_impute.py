@@ -32,7 +32,7 @@ real_y = encoder.fit_transform(real_target).toarray()
 
 syn_y = []
 for i in range(50):
-    syn_path = f'impute/{i}.csv'
+    syn_path = f'impute/{dataname}/{i}.csv'
     syn_data = pd.read_csv(syn_path)
     target = syn_data[target_col].to_numpy().reshape(-1, 1)
     syn_y.append(encoder.transform(target).toarray())
