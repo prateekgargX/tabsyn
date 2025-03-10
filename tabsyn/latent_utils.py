@@ -95,7 +95,11 @@ def split_num_cat_target(syn_data, info, num_inverse, cat_inverse, device, X_tra
     x_hat_num, x_hat_cat = norm_input
 
     bin_means = torch.linspace(0, 1, N_BINS + 1)[1:].to(x_hat_num.device)
-    x_hat_num = bin_means[x_hat_num.argmax(dim = -1)] # Take argmax, ideally should be sampled. Also, ideally sample value after sampling bin
+    
+    xhat_B, xhat_F, xhat_M = x_hat_num.size()
+    probs = torch.softmax(x_hat_num.reshape(-1, xhat_M), dim = -1)
+    bin_index = torch.multinomial(probs, 1).squeeze(-1).reshape(xhat_B, xhat_F)  # x_hat_num.argmax(dim = -1)
+    x_hat_num = bin_means[bin_index] 
     
     x_hat_num = x_hat_num * (X_train_num_max - X_train_num_min) + X_train_num_min
     # raise    
