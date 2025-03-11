@@ -313,7 +313,7 @@ class Reconstructor(nn.Module):
         self.d_token = d_token
         self.n_bins = n_bins
         
-        self.weight = nn.Parameter(Tensor(d_token,n_bins))  
+        self.weight = nn.Parameter(Tensor(d_numerical, d_token,n_bins))  
         nn.init.xavier_uniform_(self.weight, gain=1 / math.sqrt(2))
         self.cat_recons = nn.ModuleList()
 
@@ -325,7 +325,6 @@ class Reconstructor(nn.Module):
     def forward(self, h):
         h_num  = h[:, :self.d_numerical]
         h_cat  = h[:, self.d_numerical:]
-        
         recon_x_num = (h_num[..., None] * self.weight).sum(-2)
         recon_x_cat = []
         for i, recon in enumerate(self.cat_recons):
